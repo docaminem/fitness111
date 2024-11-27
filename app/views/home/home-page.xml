@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page xmlns="http://schemas.nativescript.org/tns.xsd" navigatingTo="onNavigatingTo" class="bg-gray-100">
+    <ActionBar title="FitAI Coach" class="bg-blue-600 text-white">
+        <ActionItem ios.position="right" tap="{{ onSettingsTap }}">
+            <Label text="⚙️" class="text-xl" />
+        </ActionItem>
+    </ActionBar>
+    
+    <TabView selectedTabTextColor="#3b82f6" androidTabsPosition="bottom">
+        <TabView.items>
+            <TabViewItem title="Aujourd'hui">
+                <TabViewItem.view>
+                    <ScrollView>
+                        <StackLayout class="p-4">
+                            <Label text="{{ welcomeMessage }}" class="text-2xl font-bold mb-4" />
+                            
+                            <!-- Résumé quotidien -->
+                            <GridLayout rows="auto" columns="*, *, *" class="bg-white p-4 rounded-lg mb-4">
+                                <StackLayout col="0" class="text-center">
+                                    <Label text="🔥" />
+                                    <Label text="Calories" class="text-gray-500" />
+                                    <Label text="{{ dailyStats.calories }}/{{ calorieTarget }}" class="font-bold" />
+                                </StackLayout>
+                                <StackLayout col="1" class="text-center">
+                                    <Label text="💪" />
+                                    <Label text="Protéines" class="text-gray-500" />
+                                    <Label text="{{ dailyStats.protein }}g" class="font-bold" />
+                                </StackLayout>
+                                <StackLayout col="2" class="text-center">
+                                    <Label text="💧" />
+                                    <Label text="Eau" class="text-gray-500" />
+                                    <Label text="{{ dailyStats.water }}L" class="font-bold" />
+                                </StackLayout>
+                            </GridLayout>
+
+                            <!-- Programme du jour -->
+                            <Label text="Programme du jour" class="text-xl font-bold mb-2" />
+                            <ListView items="{{ todayWorkout }}" class="bg-white rounded-lg mb-4" height="200">
+                                <ListView.itemTemplate>
+                                    <GridLayout columns="auto, *, auto" class="p-4 border-b border-gray-200">
+                                        <Label col="0" text="{{ completed ? '✅' : '⭕' }}" class="mr-2" />
+                                        <StackLayout col="1">
+                                            <Label text="{{ name }}" class="font-bold" />
+                                            <Label text="{{ sets }}x{{ reps }}" class="text-gray-500" />
+                                        </StackLayout>
+                                        <Button col="2" text="{{ completed ? 'Fait' : 'Faire' }}" 
+                                                tap="{{ $parent.onExerciseToggle }}" 
+                                                class="{{ completed ? 'bg-green-500' : 'bg-blue-500' }} text-white p-2 rounded" />
+                                    </GridLayout>
+                                </ListView.itemTemplate>
+                            </ListView>
+
+                            <!-- Actions rapides -->
+                            <GridLayout rows="auto" columns="*, *" class="gap-2">
+                                <Button col="0" text="+ Repas" tap="{{ onAddMeal }}" class="bg-blue-600 text-white p-4 rounded-lg" />
+                                <Button col="1" text="+ Eau" tap="{{ onAddWater }}" class="bg-blue-400 text-white p-4 rounded-lg" />
+                            </GridLayout>
+                        </StackLayout>
+                    </ScrollView>
+                </TabViewItem.view>
+            </TabViewItem>
+        </TabView.items>
+    </TabView>
+</Page>

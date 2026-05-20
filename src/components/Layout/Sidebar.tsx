@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useAppStore } from '../../store/appStore';
-import { isSupabaseConfigured } from '../../services/supabase';
+import { isFirebaseConfigured } from '../../services/firebase';
 
 export const navItems = [
   {
@@ -66,7 +66,7 @@ export default function Sidebar() {
 
   const handleLogout = async () => {
     logout();
-    if (isSupabaseConfigured) {
+    if (isFirebaseConfigured) {
       clearActivePlaylist();
       await signOut();
     }
@@ -135,7 +135,7 @@ export default function Sidebar() {
           </div>
         )}
         {/* Change playlist link */}
-        {isSupabaseConfigured && appUser && (
+        {isFirebaseConfigured && appUser && (
           <NavLink to="/playlists"
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-white/40 hover:text-white hover:bg-white/5 transition-all text-sm">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

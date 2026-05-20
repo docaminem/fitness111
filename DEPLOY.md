@@ -1,71 +1,85 @@
-# Déploiement de l'app IPTV
+# Déploiement de l'app IPTV (Firebase + Vercel)
 
-## Étape 1 — Créer un projet Supabase (gratuit)
+## Étape 1 — Créer un projet Firebase
 
-1. Aller sur [supabase.com](https://supabase.com) → **Start your project**
-2. Créer un compte et un nouveau projet
-3. Choisir un nom, un mot de passe (pour la DB) et une région proche (Europe West)
-4. Attendre ~2 minutes que le projet soit prêt
+1. Aller sur [console.firebase.google.com](https://console.firebase.google.com)
+2. **Add project** → nommer (ex: `iptv-app`) → continuer
+3. **Disable Google Analytics** (optionnel) → **Create project**
+4. Attendre ~30 secondes
 
-### Créer la base de données
+### Activer l'authentification Email
 
-1. Dans le tableau de bord Supabase, aller dans **SQL Editor** → **New query**
-2. Copier/coller le contenu de `supabase-schema.sql`
-3. Cliquer **Run** (▶)
+1. Menu de gauche → **Build** → **Authentication** → **Get started**
+2. Onglet **Sign-in method** → **Email/Password** → **Enable** → **Save**
 
-### Activer l'authentification email
+### Créer la base Firestore
 
-1. **Authentication** → **Providers** → **Email** : activer "Enable Email provider"
-2. Pour les tests, désactiver "Confirm email" (ou configurer SMTP pour l'envoyer)
-3. **Authentication** → **URL Configuration** → ajouter votre domaine Vercel
+1. Menu de gauche → **Build** → **Firestore Database** → **Create database**
+2. Choisir **Start in production mode** → **Next**
+3. Région : `eur3 (europe-west)` → **Enable**
 
-### Récupérer les clés API
+### Configurer les règles de sécurité
 
-1. **Settings** → **API**
-2. Copier :
-   - **Project URL** → `VITE_SUPABASE_URL`
-   - **anon / public key** → `VITE_SUPABASE_ANON_KEY`
+1. Dans **Firestore Database**, onglet **Rules**
+2. Coller le contenu de `firestore.rules` (du repo)
+3. Cliquer **Publish**
+
+### Récupérer la config Firebase
+
+1. ⚙️ **Project settings** (en haut à gauche, à côté de "Project Overview")
+2. Scroller en bas → **Your apps** → cliquer l'icône **`</>`** (Web)
+3. Nickname : `iptv-web` → **Register app**
+4. Une config apparaît :
+```js
+const firebaseConfig = {
+  apiKey: "AIzaSy...",
+  authDomain: "iptv-app.firebaseapp.com",
+  projectId: "iptv-app",
+  storageBucket: "iptv-app.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123...:web:abc..."
+};
+```
+**Garder cette page ouverte**, on a besoin de ces 6 valeurs.
 
 ---
 
-## Étape 2 — Déployer sur Vercel (gratuit)
+## Étape 2 — Déployer sur Vercel
 
-1. Aller sur [vercel.com](https://vercel.com) → **Sign up with GitHub**
-2. **Add New Project** → importer le dépôt `docaminem/fitness111`
-3. Dans **Environment Variables**, ajouter :
-   - `VITE_SUPABASE_URL` = votre Project URL
-   - `VITE_SUPABASE_ANON_KEY` = votre anon key
-4. Framework Preset : **Vite**
-5. Cliquer **Deploy** 🚀
+1. Aller sur [vercel.com/new](https://vercel.com/new) → **Continue with GitHub**
+2. Importer le repo `docaminem/fitness111`
+3. **Branch** : `claude/iptv-web-app-mdYJE`
+4. Framework Preset : **Vite** (auto-détecté)
+5. **Environment Variables** → ajouter les 6 variables :
 
-Vercel vous donnera une URL type `https://votre-app.vercel.app`
+| Name | Value (depuis Firebase) |
+|------|------------------------|
+| `VITE_FIREBASE_API_KEY` | apiKey |
+| `VITE_FIREBASE_AUTH_DOMAIN` | authDomain |
+| `VITE_FIREBASE_PROJECT_ID` | projectId |
+| `VITE_FIREBASE_STORAGE_BUCKET` | storageBucket |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | messagingSenderId |
+| `VITE_FIREBASE_APP_ID` | appId |
+
+6. **Deploy** → attendre 1 min → URL `https://votre-app.vercel.app`
+
+### Autoriser le domaine Vercel dans Firebase
+
+1. Firebase Console → **Authentication** → **Settings** → **Authorized domains**
+2. **Add domain** → coller `votre-app.vercel.app` → **Add**
 
 ---
 
 ## Utilisation
 
-1. Ouvrir l'app → page de connexion
-2. **Créer un compte** avec votre email
-3. **Ajouter une playlist** : entrer les identifiants Xtream (host, port, username, password)
-4. Cliquer **Regarder** pour vous connecter à la playlist
-5. Depuis n'importe quel appareil : se connecter avec le même email/mdp → toutes vos playlists sont disponibles
+1. Ouvrir l'URL Vercel sur iPhone / iPad / Mac
+2. **Créer un compte** (email + mdp)
+3. **Ajouter une playlist** Xtream (host, port, username, password)
+4. Cliquer **Regarder**
+5. Sur n'importe quel autre appareil → se connecter avec le même email → vos playlists apparaissent automatiquement
 
 ---
 
-## Mode local (sans Supabase)
+## Mode local (sans Firebase)
 
-Si `VITE_SUPABASE_URL` n'est pas défini, l'app fonctionne en mode local :
-- Les identifiants Xtream sont stockés dans localStorage
-- Pas de compte cloud, pas de multi-appareils
-- Utiliser `/login` pour entrer les identifiants Xtream
-
----
-
-## Variables d'environnement requises
-
-```
-VITE_SUPABASE_URL=https://XXXX.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJxxx...
-```
-
-Copier `.env.example` → `.env.local` pour les tests locaux.
+Si `VITE_FIREBASE_API_KEY` n'est pas défini, l'app fonctionne en mode local : identifiants stockés dans localStorage, pas de multi-appareils.

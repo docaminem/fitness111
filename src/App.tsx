@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAppStore } from './store/appStore';
 import { useAuthStore } from './store/authStore';
-import { isSupabaseConfigured } from './services/supabase';
+import { isFirebaseConfigured } from './services/firebase';
 import AppLayout from './components/Layout/AppLayout';
 import SignInPage from './pages/SignInPage';
 import PlaylistsPage from './pages/PlaylistsPage';
@@ -114,5 +114,5 @@ function Spinner() {
 }
 
 export default function App() {
-  return isSupabaseConfigured ? <CloudApp /> : <LocalApp />;
+  return isFirebaseConfigured ? <CloudApp /> : <LocalApp />;
 }

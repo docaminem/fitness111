@@ -1,0 +1,15 @@
+// À coller dans Firebase Console → Firestore Database → Rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Playlists : chaque utilisateur ne voit/modifie que SES playlists
+    match /playlists/{playlistId} {
+      allow read, update, delete: if request.auth != null
+                                  && resource.data.user_id == request.auth.uid;
+      allow create: if request.auth != null
+                    && request.resource.data.user_id == request.auth.uid;
+    }
+  }
+}

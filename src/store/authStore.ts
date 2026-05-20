@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { xtreamApi } from '../services/xtreamApi';
 import { storageService } from '../services/storageService';
+import { useContentStore } from './contentStore';
 import type { XtreamCredentials, XtreamUserInfo, XtreamServerInfo } from '../types/xtream';
 
 interface AuthState {
@@ -48,6 +49,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: () => {
     storageService.clearCredentials();
+    useContentStore.getState().clearAll();
     set({ isAuthenticated: false, credentials: null, userInfo: null, serverInfo: null });
   },
 

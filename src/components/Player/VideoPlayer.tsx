@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import Hls from 'hls.js';
 import { usePlayerStore } from '../../store/playerStore';
+import { xtreamApi } from '../../services/xtreamApi';
 import PlayerControls from './PlayerControls';
 
 export interface HLSTrack {
@@ -14,17 +15,48 @@ export interface HLSLevel {
   bitrate: number;
 }
 
+function buildFallbackQueue(
+  primaryUrl: string,
+  type: string | undefined,
+  streamId: number | undefined,
+  episodeId: string | undefined,
+  containerExtension: string | undefined
+): string[] {
+  const queue: string[] = [primaryUrl];
+  if (type === 'live' || !streamId) return queue;
+
+  const origExt = (containerExtension ?? primaryUrl.split('.').pop() ?? '').toLowerCase();
+  const fallbackExts = ['mp4', 'ts', 'mkv', 'm3u8'].filter((e) => e !== origExt);
+
+  try {
+    for (const ext of fallbackExts) {
+      if (type === 'movie') {
+        queue.push(xtreamApi.getVODStreamUrl(streamId, ext));
+      } else if (type === 'series' && episodeId) {
+        queue.push(xtreamApi.getSeriesEpisodeUrl(episodeId, ext));
+      }
+    }
+  } catch { /* credentials not set */ }
+
+  return queue;
+}
+
 export default function VideoPlayer() {
   const { player, isPiP, setIsPiP, closePlayer, updateProgress } = usePlayerStore();
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // URL fallback queue
+  const urlQueueRef = useRef<string[]>([]);
+  const urlIdxRef = useRef(0);
+  // Stable ref so event handlers can call loadUrl without stale closure
+  const loadUrlRef = useRef<((url: string) => void) | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(true);
 
-  // HLS track state
   const [levels, setLevels] = useState<HLSLevel[]>([]);
   const [currentLevel, setCurrentLevel] = useState(-1);
   const [audioTracks, setAudioTracks] = useState<HLSTrack[]>([]);
@@ -47,12 +79,22 @@ export default function VideoPlayer() {
     setCurrentSubtitleTrack(id);
   }, []);
 
-  const setupStream = useCallback((url: string) => {
+  // Try the next URL in the fallback queue
+  const tryNextUrl = useCallback(() => {
+    urlIdxRef.current += 1;
+    if (urlIdxRef.current < urlQueueRef.current.length) {
+      loadUrlRef.current?.(urlQueueRef.current[urlIdxRef.current]);
+    } else {
+      setError('Impossible de lire ce fichier.');
+      setLoading(false);
+    }
+  }, []);
+
+  const loadUrl = useCallback((url: string) => {
     const video = videoRef.current;
     if (!video) return;
 
     if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
-    if (progressInterval.current) clearInterval(progressInterval.current);
 
     setLoading(true);
     setError(null);
@@ -82,23 +124,39 @@ export default function VideoPlayer() {
       hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_, data) => setCurrentAudioTrack(data.id));
 
       hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) {
-          setError('Erreur de flux. Vérifiez votre connexion.');
-          setLoading(false);
-        }
+        if (data.fatal) tryNextUrl();
       });
     } else if (isHLS && video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = url;
       video.play().catch(() => {});
       setLoading(false);
     } else {
-      // Direct file (mp4, ts, mkv…)
+      // Direct file — errors are caught by the video element's error event
       video.src = url;
       video.load();
     }
-  }, []);
+  }, [tryNextUrl]);
 
-  // Start stream when player changes
+  // Keep ref in sync so event handlers always call the latest version
+  useEffect(() => { loadUrlRef.current = loadUrl; }, [loadUrl]);
+
+  const setupStream = useCallback((url: string) => {
+    if (progressInterval.current) clearInterval(progressInterval.current);
+
+    // Build fallback queue from player state
+    const queue = buildFallbackQueue(
+      url,
+      player?.type,
+      player?.streamId,
+      player?.episodeId,
+      player?.containerExtension
+    );
+    urlQueueRef.current = queue;
+    urlIdxRef.current = 0;
+
+    loadUrl(url);
+  }, [player, loadUrl]);
+
   useEffect(() => {
     if (!player?.url) return;
     setIsMuted(true);
@@ -109,7 +167,6 @@ export default function VideoPlayer() {
     };
   }, [player?.url, setupStream]);
 
-  // Video element event listeners
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !player) return;
@@ -122,8 +179,14 @@ export default function VideoPlayer() {
     };
     const onCanPlay = () => setLoading(false);
     const onError = () => {
-      setError('Impossible de lire ce fichier. Format non supporté.');
-      setLoading(false);
+      // Try next fallback before showing error
+      urlIdxRef.current += 1;
+      if (urlIdxRef.current < urlQueueRef.current.length) {
+        loadUrlRef.current?.(urlQueueRef.current[urlIdxRef.current]);
+      } else {
+        setError('Impossible de lire ce fichier. Format non supporté.');
+        setLoading(false);
+      }
     };
     const onVolumeChange = () => setIsMuted(video.muted || video.volume === 0);
 
@@ -196,27 +259,26 @@ export default function VideoPlayer() {
           poster={player.poster}
         />
 
-        {/* Loading spinner */}
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="w-14 h-14 border-4 border-violet-500 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
-        {/* Error */}
         {error && !loading && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center bg-black/60 p-6 rounded-xl">
               <p className="text-red-400 text-lg mb-4">{error}</p>
-              <button onClick={() => setupStream(player.url)}
-                className="px-6 py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white transition-colors">
+              <button
+                onClick={() => setupStream(player.url)}
+                className="px-6 py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white transition-colors"
+              >
                 Réessayer
               </button>
             </div>
           </div>
         )}
 
-        {/* Unmute overlay */}
         {isMuted && !loading && !error && (
           <div className="absolute inset-0 flex items-end justify-center pb-20 pointer-events-none">
             <button

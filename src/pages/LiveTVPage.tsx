@@ -1,22 +1,31 @@
 import { useEffect, useState, useCallback } from 'react';
 import { xtreamApi } from '../services/xtreamApi';
+import { useContentStore } from '../store/contentStore';
 import type { Category, LiveStream } from '../types/xtream';
 import { usePlayerStore } from '../store/playerStore';
 import LiveChannelCard from '../components/Content/LiveChannelCard';
 import Spinner from '../components/UI/Spinner';
 
 export default function LiveTVPage() {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [streams, setStreams] = useState<LiveStream[]>([]);
-  const [filtered, setFiltered] = useState<LiveStream[]>([]);
+  const {
+    liveCategories: cachedCats,
+    liveStreams: cachedStreams,
+    setLiveCategories,
+    setLiveStreams,
+  } = useContentStore();
+
+  const [categories, setCategories] = useState<Category[]>(cachedCats ?? []);
+  const [streams, setStreams] = useState<LiveStream[]>(cachedStreams ?? []);
+  const [filtered, setFiltered] = useState<LiveStream[]>(cachedStreams ?? []);
   const [selectedCat, setSelectedCat] = useState<string>('');
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(cachedStreams === null);
   const { openPlayer } = usePlayerStore();
 
   useEffect(() => {
+    if (cachedStreams !== null && cachedCats !== null) return;
+    setLoading(true);
     const load = async () => {
-      setLoading(true);
       try {
         const [cats, live] = await Promise.all([
           xtreamApi.getLiveCategories(),
@@ -25,6 +34,8 @@ export default function LiveTVPage() {
         setCategories(cats);
         setStreams(live);
         setFiltered(live);
+        setLiveCategories(cats);
+        setLiveStreams(live);
       } catch (e) {
         console.error(e);
       } finally {
@@ -32,6 +43,7 @@ export default function LiveTVPage() {
       }
     };
     load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const applyFilters = useCallback(() => {
@@ -44,9 +56,7 @@ export default function LiveTVPage() {
     setFiltered(result);
   }, [streams, selectedCat, search]);
 
-  useEffect(() => {
-    applyFilters();
-  }, [applyFilters]);
+  useEffect(() => { applyFilters(); }, [applyFilters]);
 
   const play = (stream: LiveStream) => {
     const url = xtreamApi.getLiveStreamUrl(stream.stream_id);
@@ -60,41 +70,31 @@ export default function LiveTVPage() {
   };
 
   return (
-    <div className="p-6">
-      <div className="flex items-center gap-4 mb-6">
+    <div className="p-4 md:p-6">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-white">TV en direct</h1>
-          <p className="text-white/40 text-sm">{filtered.length} chaînes disponibles</p>
+          <h1 className="text-xl font-bold text-white">TV en direct</h1>
+          <p className="text-white/40 text-xs">{filtered.length} chaînes</p>
         </div>
-        <div className="flex-1 flex items-center gap-3 ml-4">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher une chaîne..."
-            className="flex-1 max-w-xs bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-violet-500/50 transition-colors"
-          />
-        </div>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Rechercher une chaîne..."
+          className="ml-auto bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-violet-500/50 transition-colors w-48 md:w-64"
+        />
       </div>
 
       {categories.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-3 mb-6 scrollbar-hide">
+        <div className="flex flex-wrap gap-2 mb-5">
           <button
             onClick={() => setSelectedCat('')}
-            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              selectedCat === '' ? 'bg-violet-600 text-white' : 'bg-white/5 text-white/60 hover:bg-white/10 border border-white/10'
-            }`}
-          >
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${selectedCat === '' ? 'bg-violet-600 text-white' : 'bg-white/5 text-white/60 hover:bg-white/10 border border-white/10'}`}>
             Toutes
           </button>
           {categories.map((cat) => (
-            <button
-              key={cat.category_id}
-              onClick={() => setSelectedCat(cat.category_id)}
-              className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                selectedCat === cat.category_id ? 'bg-violet-600 text-white' : 'bg-white/5 text-white/60 hover:bg-white/10 border border-white/10'
-              }`}
-            >
+            <button key={cat.category_id} onClick={() => setSelectedCat(cat.category_id)}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${selectedCat === cat.category_id ? 'bg-violet-600 text-white' : 'bg-white/5 text-white/60 hover:bg-white/10 border border-white/10'}`}>
               {cat.category_name}
             </button>
           ))}

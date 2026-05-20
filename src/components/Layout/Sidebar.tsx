@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 
-const navItems = [
+export const navItems = [
   {
     to: '/',
     label: 'Accueil',
@@ -62,7 +62,7 @@ export default function Sidebar() {
   const { logout, userInfo } = useAuthStore();
 
   return (
-    <aside className="fixed left-0 top-0 h-full w-64 bg-[#0d0d1a] border-r border-white/5 flex flex-col z-40">
+    <aside className="fixed left-0 top-0 h-full w-64 bg-[#0d0d1a] border-r border-white/5 flex-col z-40 hidden md:flex">
       {/* Logo */}
       <div className="px-6 py-5 border-b border-white/5">
         <div className="flex items-center gap-3">

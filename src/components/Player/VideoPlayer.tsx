@@ -74,6 +74,8 @@ export default function VideoPlayer() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(true);
+  const [currentFormatLabel, setCurrentFormatLabel] = useState('');
+  const [hasMoreFormats, setHasMoreFormats] = useState(false);
 
   const [levels, setLevels] = useState<HLSLevel[]>([]);
   const [currentLevel, setCurrentLevel] = useState(-1);
@@ -118,7 +120,11 @@ export default function VideoPlayer() {
   const advanceToNext = useCallback(() => {
     urlIdxRef.current += 1;
     if (urlIdxRef.current < urlQueueRef.current.length) {
-      loadUrlRef.current?.(urlQueueRef.current[urlIdxRef.current]);
+      const nextUrl = urlQueueRef.current[urlIdxRef.current];
+      const ext = nextUrl.split('.').pop()?.split('?')[0]?.toUpperCase() ?? '?';
+      setCurrentFormatLabel(ext);
+      setHasMoreFormats(urlIdxRef.current < urlQueueRef.current.length - 1);
+      loadUrlRef.current?.(nextUrl);
     } else {
       setError('Impossible de lire ce fichier. Format non supporté.');
       setLoading(false);
@@ -192,7 +198,11 @@ export default function VideoPlayer() {
     urlQueueRef.current = queue;
     urlIdxRef.current = 0;
 
-    loadUrl(queue[0]);
+    const firstUrl = queue[0];
+    const ext = firstUrl.split('.').pop()?.split('?')[0]?.toUpperCase() ?? '?';
+    setCurrentFormatLabel(ext);
+    setHasMoreFormats(queue.length > 1);
+    loadUrl(firstUrl);
   }, [player, loadUrl]);
 
   useEffect(() => {
@@ -368,14 +378,32 @@ export default function VideoPlayer() {
 
         {isMuted && !loading && !error && (
           <div className="absolute inset-0 flex items-end justify-center pb-20 pointer-events-none">
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={unmute}
+                className="pointer-events-auto flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 backdrop-blur border border-white/20 rounded-full text-white text-sm font-medium transition-all"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l-4-4m0 4l4-4" />
+                </svg>
+                Activer le son
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* "No sound after unmute?" format switcher */}
+        {!isMuted && !loading && !error && hasMoreFormats && player.type !== 'live' && (
+          <div className="absolute top-16 right-4 pointer-events-none">
             <button
-              onClick={unmute}
-              className="pointer-events-auto flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 backdrop-blur border border-white/20 rounded-full text-white text-sm font-medium transition-all"
+              onClick={advanceToNext}
+              className="pointer-events-auto flex items-center gap-2 px-3 py-1.5 bg-black/50 hover:bg-black/70 backdrop-blur border border-white/10 rounded-full text-white/70 hover:text-white text-xs transition-all"
+              title="Essayer un autre format si pas de son"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l-4-4m0 4l4-4" />
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              Cliquez pour activer le son
+              {currentFormatLabel} · Changer format
             </button>
           </div>
         )}

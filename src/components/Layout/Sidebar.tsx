@@ -1,5 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import { useAppStore } from '../../store/appStore';
+import { isSupabaseConfigured } from '../../services/supabase';
 
 export const navItems = [
   {
@@ -60,6 +62,15 @@ export const navItems = [
 
 export default function Sidebar() {
   const { logout, userInfo } = useAuthStore();
+  const { user: appUser, activePlaylist, signOut, clearActivePlaylist } = useAppStore();
+
+  const handleLogout = async () => {
+    logout();
+    if (isSupabaseConfigured) {
+      clearActivePlaylist();
+      await signOut();
+    }
+  };
 
   return (
     <aside className="fixed left-0 top-0 h-full w-64 bg-[#0d0d1a] border-r border-white/5 flex-col z-40 hidden md:flex">
@@ -100,9 +111,20 @@ export default function Sidebar() {
       </nav>
 
       {/* User info */}
-      <div className="px-4 py-4 border-t border-white/5">
-        {userInfo && (
-          <div className="mb-3 px-2">
+      <div className="px-4 py-4 border-t border-white/5 space-y-1">
+        {/* Cloud account */}
+        {appUser && (
+          <div className="mb-2 px-2">
+            <p className="text-white/30 text-[10px] uppercase tracking-wider mb-0.5">Compte</p>
+            <p className="text-white/60 text-xs truncate">{appUser.email}</p>
+            {activePlaylist && (
+              <p className="text-violet-400 text-xs mt-0.5 truncate">▶ {activePlaylist.name}</p>
+            )}
+          </div>
+        )}
+        {/* IPTV expiry */}
+        {!appUser && userInfo && (
+          <div className="mb-2 px-2">
             <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Connecté</p>
             <p className="text-white/80 text-sm font-medium truncate">{userInfo.username}</p>
             {userInfo.exp_date && (
@@ -112,8 +134,18 @@ export default function Sidebar() {
             )}
           </div>
         )}
+        {/* Change playlist link */}
+        {isSupabaseConfigured && appUser && (
+          <NavLink to="/playlists"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-white/40 hover:text-white hover:bg-white/5 transition-all text-sm">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+            </svg>
+            Changer de playlist
+          </NavLink>
+        )}
         <button
-          onClick={logout}
+          onClick={handleLogout}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-white/50 hover:text-red-400 hover:bg-red-500/10 transition-all text-sm"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

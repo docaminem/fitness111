@@ -22,22 +22,42 @@ function buildFallbackQueue(
   episodeId: string | undefined,
   containerExtension: string | undefined
 ): string[] {
-  const queue: string[] = [primaryUrl];
-  if (type === 'live' || !streamId) return queue;
+  const queue: string[] = [];
+  const seen = new Set<string>();
+  const add = (u: string) => { if (!seen.has(u)) { seen.add(u); queue.push(u); } };
 
-  const origExt = (containerExtension ?? primaryUrl.split('.').pop() ?? '').toLowerCase();
-  const fallbackExts = ['mp4', 'ts', 'mkv', 'm3u8'].filter((e) => e !== origExt);
+  if (type === 'live' && streamId) {
+    try {
+      const m3u8 = xtreamApi.getLiveStreamUrl(streamId);
+      add(m3u8);
+      // Some Xtream servers prefer raw MPEG-TS on /live/
+      add(m3u8.replace(/\.m3u8$/, '.ts'));
+    } catch { /* no creds */ }
+    if (queue.length === 0) add(primaryUrl);
+    return queue;
+  }
+
+  if (!streamId) return [primaryUrl];
+
+  // VOD: try HLS first (gives AAC audio, audio-track selection, reliable seeking),
+  // then fall back to direct container formats.
+  const origExt = (containerExtension ?? '').toLowerCase();
+  const order = ['m3u8', 'mp4', 'ts', 'mkv', origExt];
 
   try {
-    for (const ext of fallbackExts) {
+    for (const ext of order) {
+      if (!ext) continue;
+      let url: string | null = null;
       if (type === 'movie') {
-        queue.push(xtreamApi.getVODStreamUrl(streamId, ext));
+        url = xtreamApi.getVODStreamUrl(streamId, ext);
       } else if (type === 'series' && episodeId) {
-        queue.push(xtreamApi.getSeriesEpisodeUrl(episodeId, ext));
+        url = xtreamApi.getSeriesEpisodeUrl(episodeId, ext);
       }
+      if (url) add(url);
     }
-  } catch { /* credentials not set */ }
+  } catch { /* no creds */ }
 
+  if (queue.length === 0) add(primaryUrl);
   return queue;
 }
 
@@ -47,10 +67,8 @@ export default function VideoPlayer() {
   const hlsRef = useRef<Hls | null>(null);
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // URL fallback queue
   const urlQueueRef = useRef<string[]>([]);
   const urlIdxRef = useRef(0);
-  // Stable ref so event handlers can call loadUrl without stale closure
   const loadUrlRef = useRef<((url: string) => void) | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -70,22 +88,39 @@ export default function VideoPlayer() {
   }, []);
 
   const changeAudioTrack = useCallback((id: number) => {
-    if (hlsRef.current) { hlsRef.current.audioTrack = id; }
+    if (hlsRef.current) {
+      hlsRef.current.audioTrack = id;
+    } else {
+      // Native audioTracks (Safari)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const at = (videoRef.current as any)?.audioTracks;
+      if (at) {
+        for (let i = 0; i < at.length; i++) at[i].enabled = i === id;
+      }
+    }
     setCurrentAudioTrack(id);
   }, []);
 
   const changeSubtitleTrack = useCallback((id: number) => {
-    if (hlsRef.current) { hlsRef.current.subtitleTrack = id; }
+    if (hlsRef.current) {
+      hlsRef.current.subtitleTrack = id;
+    } else {
+      const tt = videoRef.current?.textTracks;
+      if (tt) {
+        for (let i = 0; i < tt.length; i++) {
+          tt[i].mode = i === id ? 'showing' : 'hidden';
+        }
+      }
+    }
     setCurrentSubtitleTrack(id);
   }, []);
 
-  // Try the next URL in the fallback queue
-  const tryNextUrl = useCallback(() => {
+  const advanceToNext = useCallback(() => {
     urlIdxRef.current += 1;
     if (urlIdxRef.current < urlQueueRef.current.length) {
       loadUrlRef.current?.(urlQueueRef.current[urlIdxRef.current]);
     } else {
-      setError('Impossible de lire ce fichier.');
+      setError('Impossible de lire ce fichier. Format non supporté.');
       setLoading(false);
     }
   }, []);
@@ -122,28 +157,31 @@ export default function VideoPlayer() {
 
       hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => setCurrentLevel(data.level));
       hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_, data) => setCurrentAudioTrack(data.id));
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
+        setAudioTracks(hls.audioTracks.map((t) => ({ id: t.id, name: t.name, lang: t.lang })));
+      });
+      hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+        setSubtitleTracks(hls.subtitleTracks.map((t) => ({ id: t.id, name: t.name, lang: t.lang })));
+      });
 
       hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) tryNextUrl();
+        if (data.fatal) advanceToNext();
       });
     } else if (isHLS && video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = url;
       video.play().catch(() => {});
       setLoading(false);
     } else {
-      // Direct file — errors are caught by the video element's error event
       video.src = url;
       video.load();
     }
-  }, [tryNextUrl]);
+  }, [advanceToNext]);
 
-  // Keep ref in sync so event handlers always call the latest version
   useEffect(() => { loadUrlRef.current = loadUrl; }, [loadUrl]);
 
   const setupStream = useCallback((url: string) => {
     if (progressInterval.current) clearInterval(progressInterval.current);
 
-    // Build fallback queue from player state
     const queue = buildFallbackQueue(
       url,
       player?.type,
@@ -154,7 +192,7 @@ export default function VideoPlayer() {
     urlQueueRef.current = queue;
     urlIdxRef.current = 0;
 
-    loadUrl(url);
+    loadUrl(queue[0]);
   }, [player, loadUrl]);
 
   useEffect(() => {
@@ -166,6 +204,56 @@ export default function VideoPlayer() {
       if (progressInterval.current) clearInterval(progressInterval.current);
     };
   }, [player?.url, setupStream]);
+
+  // Read native audio/subtitle tracks for direct file playback (Safari MKV/MP4)
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const readNativeTracks = () => {
+      if (hlsRef.current) return; // HLS manages its own tracks
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const at = (video as any).audioTracks;
+      if (at && at.length > 0) {
+        const tracks: HLSTrack[] = [];
+        for (let i = 0; i < at.length; i++) {
+          const t = at[i];
+          tracks.push({ id: i, name: t.label || t.language || `Piste ${i + 1}`, lang: t.language });
+          if (t.enabled) setCurrentAudioTrack(i);
+        }
+        setAudioTracks(tracks);
+      }
+
+      const tt = video.textTracks;
+      if (tt && tt.length > 0) {
+        const tracks: HLSTrack[] = [];
+        for (let i = 0; i < tt.length; i++) {
+          const t = tt[i];
+          if (t.kind !== 'subtitles' && t.kind !== 'captions') continue;
+          tracks.push({ id: i, name: t.label || t.language || `Sous-titre ${i + 1}`, lang: t.language });
+          if (t.mode === 'showing') setCurrentSubtitleTrack(i);
+        }
+        setSubtitleTracks(tracks);
+      }
+    };
+
+    const onLoadedMeta = () => readNativeTracks();
+    video.addEventListener('loadedmetadata', onLoadedMeta);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const at = (video as any).audioTracks;
+    at?.addEventListener?.('change', readNativeTracks);
+    at?.addEventListener?.('addtrack', readNativeTracks);
+    video.textTracks?.addEventListener?.('addtrack', readNativeTracks);
+
+    return () => {
+      video.removeEventListener('loadedmetadata', onLoadedMeta);
+      at?.removeEventListener?.('change', readNativeTracks);
+      at?.removeEventListener?.('addtrack', readNativeTracks);
+      video.textTracks?.removeEventListener?.('addtrack', readNativeTracks);
+    };
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -179,7 +267,6 @@ export default function VideoPlayer() {
     };
     const onCanPlay = () => setLoading(false);
     const onError = () => {
-      // Try next fallback before showing error
       urlIdxRef.current += 1;
       if (urlIdxRef.current < urlQueueRef.current.length) {
         loadUrlRef.current?.(urlQueueRef.current[urlIdxRef.current]);
